@@ -24,15 +24,15 @@ func main() {
 }
 
 func run() error {
+	private, err := crypto.LoadECDSA("zblock/accounts/kennedy.ecdsa")
+	if err != nil {
+		return fmt.Errorf("load ECDSA key: %w", err)
+	}
 
 	tx := Tx{
 		FromID: "Hamid",
 		ToID:   "Wolf",
 		Value:  10,
-	}
-	private, err := crypto.LoadECDSA("zblock/accounts/kennedy.ecdsa")
-	if err != nil {
-		return fmt.Errorf("load ECDSA key: %w", err)
 	}
 
 	data, err := json.Marshal(tx)
@@ -40,13 +40,27 @@ func run() error {
 		return fmt.Errorf("json: %w", err)
 	}
 
-	digest := crypto.Keccak256(data) //stamp it
+	stamp := []byte(fmt.Sprintf("\x19Ardan Signed Message:\n%d", len(data)))
+
+	digest := crypto.Keccak256(stamp, data) //hash it to 32 bytes
 
 	sig, err := crypto.Sign(digest, private)
 	if err != nil {
 		return fmt.Errorf("sign: %w", err)
 	}
 	hex := hexutil.Encode(sig)
-	fmt.Printf("%s\n", hex)
+	fmt.Printf("SIGNATURE:\n%s\n", hex)
+
+	//==========================================================================
+	// get the public key from the signature.
+
+	publicKey, err := crypto.SigToPub(digest, sig)
+	if err != nil {
+		return fmt.Errorf("sig to pub: %w", err)
+	}
+
+	//get the public address
+	address := crypto.PubkeyToAddress(*publicKey)
+	fmt.Printf("PUBLIC ADDR:\n%s\n", address.String())
 	return nil
 }
