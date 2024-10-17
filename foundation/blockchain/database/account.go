@@ -23,7 +23,7 @@ func ToAccountID(hex string) (AccountID, error) {
 func (a AccountID) IsAccountID() bool {
 	const addressLength = 20
 
-	if has0xPrefix(a) {
+	if has0xPrefix(a) { // 0x<hex>
 		a = a[2:]
 	}
 
