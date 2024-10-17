@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
 )
 
 // Tx is the transactional information between two parties.
@@ -115,6 +116,20 @@ func run() error {
 	}
 
 	fmt.Printf("\nR:[%d]\nS:[%d]\nV:[%d]\n", r, s, v)
+
+	fmt.Println("====================== TX ========================")
+	transaction, err := database.NewTx(1, 1, "0xF01813E4B85e178A83e29B8E7bF26BD830a25f32", "0xbEE6ACE826eC3DE1B6349888B9151B92522F7F76", 1000, 0, nil)
+	if err != nil {
+		return fmt.Errorf("newTx: %w", err)
+	}
+
+	//now sign it
+	signedTX, err := transaction.Sign(private)
+	if err != nil {
+		return fmt.Errorf("sign: %w", err)
+	}
+
+	fmt.Printf("%+v\n", signedTX)
 	return nil
 }
 
