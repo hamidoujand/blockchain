@@ -7,6 +7,7 @@ import (
 
 	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/mempool"
 )
 
 // EventHandler defines a function that is called when events
@@ -30,6 +31,7 @@ type State struct {
 	evHandler     EventHandler
 
 	genesis genesis.Genesis
+	mempool *mempool.Mempool
 	db      *database.Database
 }
 
@@ -48,11 +50,18 @@ func New(conf Config) (*State, error) {
 		return nil, err
 	}
 
+	// Construct a mempool with the specified sort strategy.
+	mempool, err := mempool.New()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the State to provide support for managing the blockchain.
 	state := State{
 		beneficiaryID: conf.BeneficiaryID,
 		evHandler:     ev,
 		genesis:       conf.Genesis,
+		mempool:       mempool,
 		db:            db,
 	}
 
@@ -64,4 +73,24 @@ func (s *State) Shutdown() error {
 	s.evHandler("state: shutdown: started")
 	defer s.evHandler("state: shutdown: completed")
 	return nil
+}
+
+// MempoolLength returns the current length of the mempool.
+func (s *State) MempoolLength() int {
+	return s.mempool.Count()
+}
+
+// Mempool returns a copy of the mempool.
+func (s *State) Mempool() []database.BlockTx {
+	return s.mempool.PickBest()
+}
+
+// UpsertMempool adds a new transaction to the mempool.
+func (s *State) UpsertMempool(tx database.BlockTx) error {
+	return s.mempool.Upsert(tx)
+}
+
+// Accounts returns a copy of the database accounts.
+func (s *State) Accounts() map[database.AccountID]database.Account {
+	return s.db.Copy()
 }
