@@ -10,8 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
+
 	"github.com/ardanlabs/conf/v3"
 	"github.com/hamidoujand/blockchain/app/services/node/handlers"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/state"
 	"github.com/hamidoujand/blockchain/foundation/logger"
 	"go.uber.org/zap"
 )
@@ -56,6 +61,12 @@ func run(log *zap.SugaredLogger) error {
 			PublicHost      string        `conf:"default:0.0.0.0:8080"`
 			PrivateHost     string        `conf:"default:0.0.0.0:9080"`
 		}
+		State struct {
+			Beneficiary string `conf:"default:miner1"`
+		}
+		NameService struct {
+			Folder string `conf:"default:zblock/accounts/"`
+		}
 	}{
 		Version: conf.Version{
 			Build: build,
@@ -94,6 +105,41 @@ func run(log *zap.SugaredLogger) error {
 		return fmt.Errorf("generating config for output: %w", err)
 	}
 	log.Infow("startup", "config", out)
+
+	// =========================================================================
+	// Blockchain Support
+
+	// Need to load the private key file for this node so the
+	// account can get credited with fees and tips.
+	path := fmt.Sprintf("%s%s.ecdsa", cfg.NameService.Folder, cfg.State.Beneficiary)
+	privateKey, err := crypto.LoadECDSA(path)
+	if err != nil {
+		return fmt.Errorf("unable to load private key for node: %w", err)
+	}
+
+	//log handler
+	ev := func(v string, args ...any) {
+		s := fmt.Sprintf(v, args...)
+		log.Infow(s, "traceid", "00000000-0000-0000-0000-000000000000")
+	}
+
+	// Load the genesis file for blockchain settings and origin balances.
+	genesis, err := genesis.Load()
+	if err != nil {
+		return err
+	}
+
+	// The state value represents the blockchain node and manages the blockchain
+	// database and provides an API for application support.
+	state, err := state.New(state.Config{
+		BeneficiaryID: database.PublicKeyToAccountID(privateKey.PublicKey),
+		Genesis:       genesis,
+		EvHandler:     ev,
+	})
+	if err != nil {
+		return err
+	}
+	defer state.Shutdown()
 
 	// =========================================================================
 	// Start Debug Service

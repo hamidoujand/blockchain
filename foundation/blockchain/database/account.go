@@ -1,6 +1,11 @@
 package database
 
-import "errors"
+import (
+	"github.com/ethereum/go-ethereum/crypto"
+
+	"crypto/ecdsa"
+	"errors"
+)
 
 // AccountID represents an account id that is used to sign transactions and is
 // associated with transactions on the blockchain. This will be the last 20
@@ -53,6 +58,11 @@ func isHex(a AccountID) bool {
 // isHexCharacter returns bool of c being a valid hexadecimal.
 func isHexCharacter(c byte) bool {
 	return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
+}
+
+// PublicKeyToAccountID converts the public key to an account value.
+func PublicKeyToAccountID(pk ecdsa.PublicKey) AccountID {
+	return AccountID(crypto.PubkeyToAddress(pk).String())
 }
 
 //==============================================================================
