@@ -54,3 +54,12 @@ func isHex(a AccountID) bool {
 func isHexCharacter(c byte) bool {
 	return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
 }
+
+//==============================================================================
+
+// Account represents information stored in the database for an individual account.
+type Account struct {
+	AccountID AccountID
+	Nonce     uint64
+	Balance   uint64
+}
