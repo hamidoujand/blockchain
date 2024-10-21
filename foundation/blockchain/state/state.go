@@ -99,3 +99,8 @@ func (s *State) Accounts() map[database.AccountID]database.Account {
 func (s *State) Genesis() genesis.Genesis {
 	return s.genesis
 }
+
+// QueryAccount returns a copy of the account from the database.
+func (s *State) QueryAccount(account database.AccountID) (database.Account, error) {
+	return s.db.Query(account)
+}
