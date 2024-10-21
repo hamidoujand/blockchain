@@ -18,6 +18,7 @@ import (
 	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/state"
 	"github.com/hamidoujand/blockchain/foundation/logger"
+	"github.com/hamidoujand/blockchain/foundation/nameservice"
 	"go.uber.org/zap"
 )
 
@@ -105,6 +106,20 @@ func run(log *zap.SugaredLogger) error {
 		return fmt.Errorf("generating config for output: %w", err)
 	}
 	log.Infow("startup", "config", out)
+	// =========================================================================
+	// Name Service Support
+
+	// The nameservice package provides name resolution for account addresses.
+	// The names come from the file names in the zblock/accounts folder.
+	ns, err := nameservice.New(cfg.NameService.Folder)
+	if err != nil {
+		return fmt.Errorf("unable to load account name service: %w", err)
+	}
+
+	// Logging the accounts for documentation in the logs.
+	for account, name := range ns.Copy() {
+		log.Infow("startup", "status", "nameservice", "name", name, "account", account)
+	}
 
 	// =========================================================================
 	// Blockchain Support
@@ -182,6 +197,7 @@ func run(log *zap.SugaredLogger) error {
 		Shutdown: shutdown,
 		Log:      log,
 		State:    state,
+		NS:       ns,
 	})
 
 	// Construct a server to service the requests against the mux.
