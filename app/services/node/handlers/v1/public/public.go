@@ -5,22 +5,19 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/hamidoujand/blockchain/foundation/blockchain/state"
 	"github.com/hamidoujand/blockchain/foundation/web"
 	"go.uber.org/zap"
 )
 
 // Handlers manages the set of bar ledger endpoints.
 type Handlers struct {
-	Log *zap.SugaredLogger
+	Log   *zap.SugaredLogger
+	State *state.State
 }
 
-// Sample just provides a starting point for the class.
-func (h Handlers) Sample(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
-	resp := struct {
-		Status string
-	}{
-		Status: "OK",
-	}
-
-	return web.Respond(ctx, w, resp, http.StatusOK)
+// Genesis returns the genesis information.
+func (h Handlers) Genesis(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	gen := h.State.Genesis()
+	return web.Respond(ctx, w, gen, http.StatusOK)
 }
