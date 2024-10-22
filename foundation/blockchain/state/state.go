@@ -3,6 +3,8 @@
 package state
 
 import (
+	"context"
+	"errors"
 	"sync"
 
 	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
@@ -10,9 +12,21 @@ import (
 	"github.com/hamidoujand/blockchain/foundation/blockchain/mempool"
 )
 
+// ErrNoTransactions is returned when a block is requested to be created
+// and there are not enough transactions.
+var ErrNoTransactions = errors.New("no transactions in mempool")
+
 // EventHandler defines a function that is called when events
 // occur in the processing of persisting blocks.
 type EventHandler func(v string, args ...any)
+
+// Worker interface represents the behavior required to be implemented by any
+// package providing support for mining, peer updates, and transaction sharing.
+type Worker interface {
+	Shutdown()
+	SignalStartMining()
+	SignalCancelMining()
+}
 
 // Config represents the configuration required to start
 // the blockchain node.
@@ -33,6 +47,8 @@ type State struct {
 	genesis genesis.Genesis
 	mempool *mempool.Mempool
 	db      *database.Database
+
+	Worker Worker
 }
 
 // New constructs a new blockchain for data management.
@@ -64,7 +80,8 @@ func New(conf Config) (*State, error) {
 		mempool:       mempool,
 		db:            db,
 	}
-
+	// The Worker is not set here. The call to worker.Run will assign itself
+	// and start everything up and running for the node.
 	return &state, nil
 }
 
@@ -72,6 +89,15 @@ func New(conf Config) (*State, error) {
 func (s *State) Shutdown() error {
 	s.evHandler("state: shutdown: started")
 	defer s.evHandler("state: shutdown: completed")
+
+	// Make sure the database file is properly closed.
+	// defer func() {
+	// 	s.db.Close()
+	// }()
+
+	// Stop all blockchain writing activity.
+	s.Worker.Shutdown()
+
 	return nil
 }
 
@@ -124,5 +150,48 @@ func (s *State) UpsertWalletTransaction(signedTx database.SignedTx) error {
 		return err
 	}
 
+	s.Worker.SignalStartMining()
+
 	return nil
+}
+
+// MineNewBlock attempts to create a new block with a proper hash that can become
+// the next block in the chain.
+func (s *State) MineNewBlock(ctx context.Context) (database.Block, error) {
+	defer s.evHandler("viewer: MineNewBlock: MINING: completed")
+
+	s.evHandler("state: MineNewBlock: MINING: check mempool count")
+
+	// Are there enough transactions in the pool.
+	if s.mempool.Count() == 0 {
+		return database.Block{}, ErrNoTransactions
+	}
+
+	// Pick the best transactions from the mempool.
+	trans := s.mempool.PickBest(s.genesis.TransPerBlock)
+
+	difficulty := s.genesis.Difficulty
+
+	// Attempt to create a new block by solving the POW puzzle. This can be cancelled.
+	block, err := database.POW(ctx, database.POWArgs{
+		BeneficiaryID: s.beneficiaryID,
+		Difficulty:    difficulty,
+		MiningReward:  s.genesis.MiningReward,
+		PrevBlock:     s.db.LatestBlock(),
+		StateRoot:     s.db.HashState(),
+		Trans:         trans,
+		EvHandler:     s.evHandler,
+	})
+	if err != nil {
+		return database.Block{}, err
+	}
+
+	s.evHandler("state: MineNewBlock: MINING: validate and update database")
+
+	// Validate the block and then update the blockchain database.
+	// if err := s.validateUpdateDatabase(block); err != nil {
+	// 	return database.Block{}, err
+	// }
+
+	return block, nil
 }

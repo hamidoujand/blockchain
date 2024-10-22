@@ -1,17 +1,22 @@
 package database
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
 )
 
 // Database manages data related to accounts who have transacted on the blockchain.
 type Database struct {
-	mu       sync.RWMutex
-	genesis  genesis.Genesis
-	accounts map[AccountID]Account
+	mu          sync.RWMutex
+	latestBlock Block //storing at the db level what is the last block we have on disk.
+	genesis     genesis.Genesis
+	accounts    map[AccountID]Account
 }
 
 // New constructs a new database and applies account genesis information and
@@ -69,4 +74,44 @@ func (db *Database) Copy() map[AccountID]Account {
 		accounts[accountID] = account
 	}
 	return accounts
+}
+
+// LatestBlock returns the latest block.
+func (db *Database) LatestBlock() Block {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	return db.latestBlock
+}
+
+// UpdateLatestBlock provides safe access to update the latest block.
+func (db *Database) UpdateLatestBlock(block Block) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	db.latestBlock = block
+}
+
+// HashState returns a hash based on the contents of the accounts and
+// their balances. This is added to each block and checked by peers.
+func (db *Database) HashState() string {
+	accounts := make([]Account, 0, len(db.accounts))
+	db.mu.RLock()
+	{
+		for _, account := range db.accounts {
+			accounts = append(accounts, account)
+		}
+	}
+	db.mu.RUnlock()
+	//we need them in the same order all the time.
+	sort.Sort(byAccount(accounts))
+
+	//hash them
+	data, err := json.Marshal(accounts)
+	if err != nil {
+		return ZeroHash
+	}
+
+	hash := sha256.Sum256(data)
+	return hexutil.Encode(hash[:])
 }
