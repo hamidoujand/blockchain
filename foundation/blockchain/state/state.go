@@ -243,3 +243,8 @@ func (s *State) validateUpdateDatabase(block database.Block) error {
 
 	return nil
 }
+
+// LatestBlock returns a copy the current latest block.
+func (s *State) LatestBlock() database.Block {
+	return s.db.LatestBlock()
+}
