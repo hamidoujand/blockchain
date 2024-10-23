@@ -261,3 +261,14 @@ func isHashSolved(difficulty uint16, hash string) bool {
 	difficulty += 2
 	return hash[:difficulty] == match[:difficulty]
 }
+
+// NewBlockData constructs block data from a block.
+func NewBlockData(block Block) BlockData {
+	blockData := BlockData{
+		Hash:   block.Hash(),
+		Header: block.Header,
+		Trans:  block.MerkleTree.Values(),
+	}
+
+	return blockData
+}

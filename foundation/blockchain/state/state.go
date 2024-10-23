@@ -35,6 +35,7 @@ type Config struct {
 	BeneficiaryID database.AccountID
 	Genesis       genesis.Genesis
 	EvHandler     EventHandler
+	Storage       database.Storage
 }
 
 // State manages the blockchain database.
@@ -47,8 +48,8 @@ type State struct {
 	genesis genesis.Genesis
 	mempool *mempool.Mempool
 	db      *database.Database
-
-	Worker Worker
+	storage database.Storage
+	Worker  Worker
 }
 
 // New constructs a new blockchain for data management.
@@ -61,7 +62,7 @@ func New(conf Config) (*State, error) {
 	}
 
 	// Access the storage for the blockchain.
-	db, err := database.New(conf.Genesis, ev)
+	db, err := database.New(conf.Genesis, conf.Storage, ev)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +80,7 @@ func New(conf Config) (*State, error) {
 		genesis:       conf.Genesis,
 		mempool:       mempool,
 		db:            db,
+		storage:       conf.Storage,
 	}
 	// The Worker is not set here. The call to worker.Run will assign itself
 	// and start everything up and running for the node.
@@ -216,10 +218,10 @@ func (s *State) validateUpdateDatabase(block database.Block) error {
 
 	s.evHandler("state: validateUpdateDatabase: write to disk")
 
-	// // Write the new block to the chain on disk.
-	// if err := s.db.Write(block); err != nil {
-	// 	return err
-	// }
+	// Write the new block to the chain on disk.
+	if err := s.db.Write(block); err != nil {
+		return err
+	}
 	s.db.UpdateLatestBlock(block)
 
 	s.evHandler("state: validateUpdateDatabase: update accounts and remove from mempool")

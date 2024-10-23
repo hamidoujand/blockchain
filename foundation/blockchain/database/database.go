@@ -12,19 +12,59 @@ import (
 	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
 )
 
+// Storage interface represents the behavior required to be implemented by any
+// package providing support for reading and writing the blockchain.
+type Storage interface {
+	Write(blockData BlockData) error
+	GetBlock(num uint64) (BlockData, error)
+	ForEach() Iterator
+	Close() error
+	Reset() error
+}
+
+// Iterator interface represents the behavior required to be implemented by any
+// package providing support to iterate over the blocks.
+type Iterator interface {
+	Next() (BlockData, error)
+	Done() bool
+}
+
 // Database manages data related to accounts who have transacted on the blockchain.
 type Database struct {
 	mu          sync.RWMutex
 	latestBlock Block //storing at the db level what is the last block we have on disk.
 	genesis     genesis.Genesis
 	accounts    map[AccountID]Account
+	storage     Storage
+}
+
+// DatabaseIterator provides support for iterating over the blocks in the
+// blockchain database using the configured storage option.
+type DatabaseIterator struct {
+	iterator Iterator
+}
+
+// Next retrieves the next block from disk.
+func (di *DatabaseIterator) Next() (Block, error) {
+	blockData, err := di.iterator.Next()
+	if err != nil {
+		return Block{}, err
+	}
+
+	return ToBlock(blockData)
+}
+
+// Done returns the end of chain value.
+func (di *DatabaseIterator) Done() bool {
+	return di.iterator.Done()
 }
 
 // New constructs a new database and applies account genesis information and
 // reads/writes the blockchain database on disk if a dbPath is provided.
-func New(genesis genesis.Genesis, evHandler func(v string, args ...any)) (*Database, error) {
+func New(genesis genesis.Genesis, storage Storage, evHandler func(v string, args ...any)) (*Database, error) {
 	db := Database{
 		genesis:  genesis,
+		storage:  storage,
 		accounts: make(map[AccountID]Account),
 	}
 
@@ -39,6 +79,28 @@ func New(genesis genesis.Genesis, evHandler func(v string, args ...any)) (*Datab
 			Balance:   balance,
 		}
 		evHandler("account: %s  balance: %d", accountStr, balance)
+	}
+
+	// Read all the blocks from storage.
+	iter := db.ForEach()
+	for block, err := iter.Next(); !iter.Done(); block, err = iter.Next() {
+		if err != nil {
+			return nil, err
+		}
+
+		// Validate the block values and cryptographic audit trail.
+		if err := block.ValidateBlock(db.latestBlock, db.HashState(), evHandler); err != nil {
+			return nil, err
+		}
+
+		// Update the database with the transaction information.
+		for _, tx := range block.MerkleTree.Values() {
+			db.ApplyTransaction(block, tx)
+		}
+		db.ApplyMiningReward(block)
+
+		// Update the current latest block.
+		db.latestBlock = block
 	}
 
 	return &db, nil
@@ -189,4 +251,15 @@ func (db *Database) ApplyMiningReward(block Block) {
 	account.Balance += block.Header.MiningReward
 
 	db.accounts[block.Header.BeneficiaryID] = account
+}
+
+// ForEach returns an iterator to walk through all the blocks
+// starting with block number 1.
+func (db *Database) ForEach() DatabaseIterator {
+	return DatabaseIterator{iterator: db.storage.ForEach()}
+}
+
+// Write adds a new block to the chain.
+func (db *Database) Write(block Block) error {
+	return db.storage.Write(NewBlockData(block))
 }

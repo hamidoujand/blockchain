@@ -17,6 +17,7 @@ import (
 	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/state"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/storage/disk"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/worker"
 	"github.com/hamidoujand/blockchain/foundation/logger"
 	"github.com/hamidoujand/blockchain/foundation/nameservice"
@@ -65,6 +66,7 @@ func run(log *zap.SugaredLogger) error {
 		}
 		State struct {
 			Beneficiary string `conf:"default:miner1"`
+			DBPath      string `conf:"default:zblock/miner1/"`
 		}
 		NameService struct {
 			Folder string `conf:"default:zblock/accounts/"`
@@ -145,12 +147,19 @@ func run(log *zap.SugaredLogger) error {
 		return err
 	}
 
+	// Construct the use of disk storage.
+	storage, err := disk.New(cfg.State.DBPath)
+	if err != nil {
+		return err
+	}
+
 	// The state value represents the blockchain node and manages the blockchain
 	// database and provides an API for application support.
 	state, err := state.New(state.Config{
 		BeneficiaryID: database.PublicKeyToAccountID(privateKey.PublicKey),
 		Genesis:       genesis,
 		EvHandler:     ev,
+		Storage:       storage,
 	})
 	if err != nil {
 		return err
