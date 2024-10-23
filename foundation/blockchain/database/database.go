@@ -174,7 +174,6 @@ func (db *Database) HashState() string {
 	if err != nil {
 		return ZeroHash
 	}
-
 	hash := sha256.Sum256(data)
 	return hexutil.Encode(hash[:])
 }

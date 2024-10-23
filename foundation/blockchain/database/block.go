@@ -234,12 +234,6 @@ func (b Block) ValidateBlock(previousBlock Block, stateRoot string, evHandler fu
 		}
 	}
 
-	evHandler("database: ValidateBlock: validate: blk[%d]: check: state root hash does match current database", b.Header.Number)
-
-	if b.Header.StateRoot != stateRoot {
-		return fmt.Errorf("state of the accounts are wrong, current %s, expected %s", stateRoot, b.Header.StateRoot)
-	}
-
 	evHandler("database: ValidateBlock: validate: blk[%d]: check: merkle root does match transactions", b.Header.Number)
 
 	if b.Header.TransRoot != b.MerkleTree.RootHex() {
