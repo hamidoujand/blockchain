@@ -74,6 +74,14 @@ type Account struct {
 	Balance   uint64
 }
 
+// newAccount constructs a new account value for use.
+func newAccount(accountID AccountID, balance uint64) Account {
+	return Account{
+		AccountID: accountID,
+		Balance:   balance,
+	}
+}
+
 // =============================================================================
 
 // byAccount provides sorting support by the account id value.
