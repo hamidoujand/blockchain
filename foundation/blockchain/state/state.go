@@ -517,3 +517,24 @@ func (s *State) UpsertNodeTransaction(tx database.BlockTx) error {
 	s.Worker.SignalShareTx(tx)
 	return nil
 }
+
+// NetSendBlockToPeers takes the new mined block and sends it to all know peers.
+func (s *State) NetSendBlockToPeers(block database.Block) error {
+	s.evHandler("state: NetSendBlockToPeers: started")
+	defer s.evHandler("state: NetSendBlockToPeers: completed")
+
+	for _, peer := range s.KnownExternalPeers() {
+		s.evHandler("state: NetSendBlockToPeers: send: block[%s] to peer[%s]", block.Hash(), peer)
+
+		url := fmt.Sprintf("%s/block/propose", fmt.Sprintf(baseURL, peer.Host))
+
+		var status struct {
+			Status string `json:"status"`
+		}
+		if err := send(http.MethodPost, url, database.NewBlockData(block), &status); err != nil {
+			return fmt.Errorf("%s: %s", peer.Host, err)
+		}
+	}
+
+	return nil
+}
