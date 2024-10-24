@@ -8,9 +8,23 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/peer"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/state"
 )
+
+// CORE NOTE: Sharing new transactions received directly by a wallet is
+// performed by this goroutine. When a wallet transaction is received,
+// the request goroutine shares it with this goroutine to send it over the
+// p2p network. Up to 100 transactions can be pending to be sent before new
+// transactions are dropped and not sent.
+
+// maxTxShareRequests represents the max number of pending tx network share
+// requests that can be outstanding before share requests are dropped. To keep
+// this simple, a buffered channel of this arbitrary number is being used. If
+// the channel does become full, requests for new transactions to be shared
+// will not be accepted.
+const maxTxShareRequests = 100
 
 // Worker manages the POW workflows for the blockchain.
 type Worker struct {
@@ -20,6 +34,7 @@ type Worker struct {
 	startMining  chan bool
 	cancelMining chan bool
 	evHandler    state.EventHandler
+	txSharing    chan database.BlockTx
 }
 
 // Run creates a worker, registers the worker with the state package, and
@@ -30,6 +45,7 @@ func Run(st *state.State, evHandler state.EventHandler) {
 		shut:         make(chan struct{}),
 		startMining:  make(chan bool, 1),
 		cancelMining: make(chan bool, 1),
+		txSharing:    make(chan database.BlockTx, maxTxShareRequests),
 		evHandler:    evHandler,
 	}
 
@@ -44,6 +60,7 @@ func Run(st *state.State, evHandler state.EventHandler) {
 
 	// Load the set of operations we need to run.
 	operations := []func(){
+		w.shareTxOperations,
 		w.powOperations,
 	}
 
@@ -294,4 +311,33 @@ func (w *Worker) addNewPeers(knownPeers []peer.Peer) error {
 	}
 
 	return nil
+}
+
+// shareTxOperations handles sharing new block transactions.
+func (w *Worker) shareTxOperations() {
+	w.evHandler("worker: shareTxOperations: G started")
+	defer w.evHandler("worker: shareTxOperations: G completed")
+
+	for {
+		select {
+		case tx := <-w.txSharing:
+			if !w.isShutdown() {
+				w.state.NetSendTxToPeers(tx)
+			}
+		case <-w.shut:
+			w.evHandler("worker: shareTxOperations: received shut signal")
+			return
+		}
+	}
+}
+
+// SignalShareTx signals a share transaction operation. If
+// maxTxShareRequests signals exist in the channel, we won't send these.
+func (w *Worker) SignalShareTx(blockTx database.BlockTx) {
+	select {
+	case w.txSharing <- blockTx:
+		w.evHandler("worker: SignalShareTx: share Tx signaled")
+	default:
+		w.evHandler("worker: SignalShareTx: queue full, transactions won't be shared.")
+	}
 }

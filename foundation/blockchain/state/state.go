@@ -35,8 +35,10 @@ type EventHandler func(v string, args ...any)
 // package providing support for mining, peer updates, and transaction sharing.
 type Worker interface {
 	Shutdown()
+	Sync()
 	SignalStartMining()
 	SignalCancelMining()
+	SignalShareTx(blockTx database.BlockTx)
 }
 
 // Config represents the configuration required to start
@@ -472,5 +474,46 @@ func (s *State) ProcessProposedBlock(block database.Block) error {
 	// immediately.
 	s.Worker.SignalCancelMining()
 
+	return nil
+}
+
+// NetSendTxToPeers shares a new block transaction with the known peers.
+func (s *State) NetSendTxToPeers(tx database.BlockTx) {
+	s.evHandler("state: NetSendTxToPeers: started")
+	defer s.evHandler("state: NetSendTxToPeers: completed")
+
+	// CORE NOTE: Bitcoin does not send the full transaction immediately to save
+	// on bandwidth. A node will send the transaction's mempool key first so the
+	// receiving node can check if they already have the transaction or not. If
+	// the receiving node doesn't have it, then it will request the transaction
+	// based on the mempool key it received.
+
+	// For now, the Ardan blockchain just sends the full transaction.
+	for _, peer := range s.KnownExternalPeers() {
+		s.evHandler("state: NetSendTxToPeers: send: tx[%s] to peer[%s]", tx, peer)
+
+		url := fmt.Sprintf("%s/tx/submit", fmt.Sprintf(baseURL, peer.Host))
+
+		if err := send(http.MethodPost, url, tx, nil); err != nil {
+			s.evHandler("state: NetSendTxToPeers: WARNING: %s", err)
+		}
+	}
+}
+
+// UpsertNodeTransaction accepts a transaction from a node for inclusion.
+func (s *State) UpsertNodeTransaction(tx database.BlockTx) error {
+
+	// Check the signed transaction has a proper signature, the from matches the
+	// signature, and the from and to fields are properly formatted.
+	if err := tx.Validate(s.genesis.ChainID); err != nil {
+		return err
+	}
+
+	if err := s.mempool.Upsert(tx); err != nil {
+		return err
+	}
+
+	s.Worker.SignalStartMining()
+	s.Worker.SignalShareTx(tx)
 	return nil
 }
