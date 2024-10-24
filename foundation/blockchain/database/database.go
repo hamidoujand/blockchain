@@ -262,3 +262,14 @@ func (db *Database) ForEach() DatabaseIterator {
 func (db *Database) Write(block Block) error {
 	return db.storage.Write(NewBlockData(block))
 }
+
+// GetBlock searches the blockchain on disk to locate and return the
+// contents of the specified block by number.
+func (db *Database) GetBlock(num uint64) (Block, error) {
+	blockData, err := db.storage.GetBlock(num)
+	if err != nil {
+		return Block{}, err
+	}
+
+	return ToBlock(blockData)
+}

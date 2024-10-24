@@ -16,6 +16,7 @@ import (
 	"github.com/hamidoujand/blockchain/app/services/node/handlers"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/database"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/genesis"
+	"github.com/hamidoujand/blockchain/foundation/blockchain/peer"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/state"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/storage/disk"
 	"github.com/hamidoujand/blockchain/foundation/blockchain/worker"
@@ -65,8 +66,9 @@ func run(log *zap.SugaredLogger) error {
 			PrivateHost     string        `conf:"default:0.0.0.0:9080"`
 		}
 		State struct {
-			Beneficiary string `conf:"default:miner1"`
-			DBPath      string `conf:"default:zblock/miner1/"`
+			Beneficiary string   `conf:"default:miner1"`
+			DBPath      string   `conf:"default:zblock/miner1/"`
+			OriginPeers []string `conf:"default:0.0.0.0:9080"`
 		}
 		NameService struct {
 			Folder string `conf:"default:zblock/accounts/"`
@@ -119,6 +121,14 @@ func run(log *zap.SugaredLogger) error {
 	// =========================================================================
 	// Blockchain Support
 
+	// A peer set is a collection of known nodes in the network so transactions
+	// and blocks can be shared.
+	peerSet := peer.NewPeerSet()
+	for _, host := range cfg.State.OriginPeers {
+		peerSet.Add(peer.New(host))
+	}
+	peerSet.Add(peer.New(cfg.Web.PrivateHost))
+
 	// Need to load the private key file for this node so the
 	// account can get credited with fees and tips.
 	path := fmt.Sprintf("%s%s.ecdsa", cfg.NameService.Folder, cfg.State.Beneficiary)
@@ -152,6 +162,8 @@ func run(log *zap.SugaredLogger) error {
 		Genesis:       genesis,
 		EvHandler:     ev,
 		Storage:       storage,
+		KnownPeers:    peerSet,
+		Host:          cfg.Web.PrivateHost,
 	})
 	if err != nil {
 		return err
@@ -232,6 +244,8 @@ func run(log *zap.SugaredLogger) error {
 	privateMux := handlers.PrivateMux(handlers.MuxConfig{
 		Shutdown: shutdown,
 		Log:      log,
+		State:    state,
+		NS:       ns,
 	})
 
 	// Construct a server to service the requests against the mux.
