@@ -174,6 +174,7 @@ func (s *State) UpsertWalletTransaction(signedTx database.SignedTx) error {
 	}
 
 	s.Worker.SignalStartMining()
+	s.Worker.SignalShareTx(tx)
 
 	return nil
 }
@@ -491,7 +492,7 @@ func (s *State) NetSendTxToPeers(tx database.BlockTx) {
 	// For now, the Ardan blockchain just sends the full transaction.
 	for _, peer := range s.KnownExternalPeers() {
 		s.evHandler("state: NetSendTxToPeers: send: tx[%s] to peer[%s]", tx, peer)
-
+		fmt.Println("**************************************************************")
 		url := fmt.Sprintf("%s/tx/submit", fmt.Sprintf(baseURL, peer.Host))
 
 		if err := send(http.MethodPost, url, tx, nil); err != nil {
@@ -512,9 +513,7 @@ func (s *State) UpsertNodeTransaction(tx database.BlockTx) error {
 	if err := s.mempool.Upsert(tx); err != nil {
 		return err
 	}
-
 	s.Worker.SignalStartMining()
-	s.Worker.SignalShareTx(tx)
 	return nil
 }
 
