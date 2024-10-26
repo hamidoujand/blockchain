@@ -69,6 +69,7 @@ func run(log *zap.SugaredLogger) error {
 			Beneficiary string   `conf:"default:miner1"`
 			DBPath      string   `conf:"default:zblock/miner1/"`
 			OriginPeers []string `conf:"default:0.0.0.0:9080"`
+			Consensus   string   `conf:"default:POA"` // Change to POA to run Proof of Authority
 		}
 		NameService struct {
 			Folder string `conf:"default:zblock/accounts/"`
@@ -164,6 +165,7 @@ func run(log *zap.SugaredLogger) error {
 		Storage:       storage,
 		KnownPeers:    peerSet,
 		Host:          cfg.Web.PrivateHost,
+		Consensus:     cfg.State.Consensus,
 	})
 	if err != nil {
 		return err

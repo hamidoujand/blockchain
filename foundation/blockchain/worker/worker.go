@@ -64,11 +64,18 @@ func Run(st *state.State, evHandler state.EventHandler) {
 	// Update this node before starting any support G's.
 	w.Sync()
 
+	// Select the consensus operation to run default is POW.
+	consensusOperation := w.powOperations
+	if st.Consensus() == state.ConsensusPOA {
+		consensusOperation = w.poaOperations
+	}
+
 	// Load the set of operations we need to run.
 	operations := []func(){
 		w.peerOperations,
 		w.shareTxOperations,
 		w.powOperations,
+		consensusOperation,
 	}
 
 	// Set waitgroup to match the number of G's we need for the set

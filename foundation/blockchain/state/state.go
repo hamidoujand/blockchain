@@ -18,6 +18,12 @@ import (
 	"github.com/hamidoujand/blockchain/foundation/blockchain/peer"
 )
 
+// The set of different consensus protocols that can be used.
+const (
+	ConsensusPOW = "POW"
+	ConsensusPOA = "POA"
+)
+
 const baseURL = "http://%s/v1/node"
 
 // QueryLastest represents to query the latest block in the chain.
@@ -51,6 +57,7 @@ type Config struct {
 	Storage       database.Storage
 	KnownPeers    *peer.PeerSet
 	Host          string
+	Consensus     string
 }
 
 // State manages the blockchain database.
@@ -66,7 +73,8 @@ type State struct {
 	db         *database.Database
 	storage    database.Storage
 
-	host string
+	host      string
+	consensus string
 
 	Worker Worker
 }
@@ -102,6 +110,7 @@ func New(conf Config) (*State, error) {
 		storage:       conf.Storage,
 		knownPeers:    conf.KnownPeers,
 		host:          conf.Host,
+		consensus:     conf.Consensus,
 	}
 	// The Worker is not set here. The call to worker.Run will assign itself
 	// and start everything up and running for the node.
@@ -542,4 +551,9 @@ func (s *State) NetSendBlockToPeers(block database.Block) error {
 // the known peer list.
 func (s *State) RemoveKnownPeer(peer peer.Peer) {
 	s.knownPeers.Remove(peer)
+}
+
+// Consensus returns a copy of consensus algorithm being used.
+func (s *State) Consensus() string {
+	return s.consensus
 }
