@@ -537,3 +537,9 @@ func (s *State) NetSendBlockToPeers(block database.Block) error {
 
 	return nil
 }
+
+// RemoveKnownPeer provides the ability to remove a peer from
+// the known peer list.
+func (s *State) RemoveKnownPeer(peer peer.Peer) {
+	s.knownPeers.Remove(peer)
+}

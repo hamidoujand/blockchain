@@ -26,6 +26,10 @@ import (
 // will not be accepted.
 const maxTxShareRequests = 100
 
+// peerUpdateInterval represents the interval of finding new peer nodes
+// and updating the blockchain on disk with missing blocks.
+const peerUpdateInterval = time.Second * 10
+
 // Worker manages the POW workflows for the blockchain.
 type Worker struct {
 	state        *state.State
@@ -35,6 +39,7 @@ type Worker struct {
 	cancelMining chan bool
 	evHandler    state.EventHandler
 	txSharing    chan database.BlockTx
+	ticker       time.Ticker
 }
 
 // Run creates a worker, registers the worker with the state package, and
@@ -47,6 +52,7 @@ func Run(st *state.State, evHandler state.EventHandler) {
 		cancelMining: make(chan bool, 1),
 		txSharing:    make(chan database.BlockTx, maxTxShareRequests),
 		evHandler:    evHandler,
+		ticker:       *time.NewTicker(peerUpdateInterval),
 	}
 
 	//state has only access to the interface and can not assign itself to it
@@ -60,6 +66,7 @@ func Run(st *state.State, evHandler state.EventHandler) {
 
 	// Load the set of operations we need to run.
 	operations := []func(){
+		w.peerOperations,
 		w.shareTxOperations,
 		w.powOperations,
 	}
@@ -344,4 +351,60 @@ func (w *Worker) SignalShareTx(blockTx database.BlockTx) {
 	default:
 		w.evHandler("worker: SignalShareTx: queue full, transactions won't be shared.")
 	}
+}
+
+// CORE NOTE: The p2p network is managed by this goroutine. There is
+// a single node that is considered the origin node. The defaults in
+// main.go represent the origin node. That node must be running first.
+// All new peer nodes connect to the origin node to identify all other
+// peers on the network. The topology is all nodes having a connection
+// to all other nodes. If a node does not respond to a network call,
+// they are removed from the peer list until the next peer operation.
+
+// peerOperations handles finding new peers.
+func (w *Worker) peerOperations() {
+	w.evHandler("worker: peerOperations: G started")
+	defer w.evHandler("worker: peerOperations: G completed")
+
+	// On startup talk to the origin node and get an updated
+	// peers list. Then share with the network that this node
+	// is available for transaction and block submissions.
+
+	for {
+		select {
+		case <-w.ticker.C:
+			if !w.isShutdown() {
+				w.runPeersOperation()
+			}
+		case <-w.shut:
+			w.evHandler("worker: peerOperations: received shut signal")
+			return
+		}
+	}
+}
+
+// runPeersOperation updates the peer list.
+func (w *Worker) runPeersOperation() {
+	w.evHandler("worker: runPeersOperation: started")
+	defer w.evHandler("worker: runPeersOperation: completed")
+
+	for _, peer := range w.state.KnownExternalPeers() {
+
+		// Retrieve the status of this peer.
+		peerStatus, err := w.state.NetRequestPeerStatus(peer)
+		if err != nil {
+			w.evHandler("worker: runPeersOperation: requestPeerStatus: %s: ERROR: %s", peer.Host, err)
+
+			// Since this peer is unavailable, remove them from the list.
+			w.state.RemoveKnownPeer(peer)
+
+			continue
+		}
+
+		// Add peers from this nodes peer list that we are missing.
+		w.addNewPeers(peerStatus.KnownPeers)
+	}
+
+	// Share with peers this node is available to participate in the network.
+	w.state.NetSendNodeAvailableToPeers()
 }
